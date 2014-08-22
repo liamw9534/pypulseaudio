@@ -22,7 +22,8 @@ state_map = {
 def callback(cb):
     """
     Decorator for wrapping a callback function and handling return
-    value storage and termination of sequenced callbacks
+    value storage and termination of sequenced callbacks.
+    See also:: :meth:`wait_callback`
     """ 
     def cb_func(*args):
         self = args[0]
@@ -38,11 +39,14 @@ def callback(cb):
 def wait_callback(cb):
     """
     Decorator for wrapping a function such that its termination
-    condition depends on when the callback(s) completed.  The
-    decorator must be passed the callback function name, as
-    a string, in order to access the correct location for
-    the callback return value.  This complements the behaviour
-    of the callback decorator.
+    condition depends on when the callback(s) completed and allows
+    the asynchronous return value to be returned synchronously.
+    The decorator must be passed the callback function name, as
+    an argument, in order to access the correct location for
+    retrieving the callback return value.  This complements
+    the procedure carried out by :meth:`callback`.
+
+    TODO: Add timeout and state error handling support.
     """ 
     def cb_decorator(f):
         def cb_func(*args):
@@ -63,7 +67,9 @@ def wait_state_change(required_state):
     Decorator for wrapping a function such that its termination
     depends on a pulseaudio state change.  The required_state
     argument is substituted with the actual desired value when
-    the decorator is used. 
+    the decorator is used.
+    
+    TODO: Add timeout support.
     """
     def cb_decorator(f):
         def cb_func(*args):
@@ -127,8 +133,6 @@ class PulseAudio(object):
         Connect to a pulseaudio server.  The connection operation is considered complete
         only following the state transition to PA_CONTEXT_READY.
 
-        TODO: Connect failures and timeout handling.
-
         :param server: Refer to
             http://www.freedesktop.org/wiki/Software/PulseAudio/Documentation/User/ServerStrings/
             for a definition of the server string name.
@@ -146,8 +150,6 @@ class PulseAudio(object):
         """
         Disconnect the current pulseaudio connection context.  The disconnect operation is
         considered complete only following the state transition to PA_CONTEXT_TERMINATED.
-
-        TODO: Disconnect failures and timeout handling.
         """
         pa_context_disconnect(self._context)
 
@@ -427,6 +429,24 @@ class PulseAudio(object):
                                    self._get_module_info,
                                    None)
 
+    @wait_callback('_server_info_cb')
+    def get_server_info(self):
+        """
+        Obtain server info.  Supported fields are:
+        - user_name
+        - host_name
+        - server_version
+        - default_sink_name
+        - default_source_name
+
+        :return: server information
+        :rtype: list of single dict item
+        """
+        self._get_server_info = pa_server_info_cb_t(self._server_info_cb)
+        pa_context_get_server_info(self._context,
+                                   self._get_server_info,
+                                   None)
+
     @wait_callback('_context_success_cb')
     def unload_module(self, index):
         """
@@ -434,8 +454,8 @@ class PulseAudio(object):
 
         :param index: a valid module index.
             See also:: :meth:`get_module_info_list` and :meth:`load_module`
-        :return: module index number unloaded
-        :rtype: a list containing module index integer
+        :return: success status
+        :rtype: a list containing 1=>success, 0=>failure
         """
         self._unload_module = pa_context_success_cb_t(self._context_success_cb)
         pa_context_unload_module(self._context,
@@ -450,8 +470,8 @@ class PulseAudio(object):
 
         :param index: a valid card profile index.
             See also:: :meth:`get_card_info_list`
-        :return: card profile index number activated
-        :rtype: a list containing card profile index integer
+        :return: success status
+        :rtype: a list containing 1=>success, 0=>failure
         """
         self._set_card_profile_by_index = pa_context_success_cb_t(self._context_success_cb)
         pa_context_set_card_profile_by_index(self._context,
@@ -466,14 +486,46 @@ class PulseAudio(object):
 
         :param index: a valid card profile index.
             See also:: :meth:`get_card_info_list`
-        :return: card profile index number activated
-        :rtype: a list containing card profile index integer
+        :return: success status
+        :rtype: a list containing 1=>success, 0=>failure
         """
         self._set_card_profile_by_name = pa_context_success_cb_t(self._context_success_cb)
         pa_context_set_card_profile_by_name(self._context,
                                             name,
                                             self._set_card_profile_by_name,
                                             None)
+
+    @wait_callback('_context_success_cb')
+    def set_default_source(self, name):
+        """
+        Set default source by name.
+
+        :param name: name of source
+            See also:: :meth:`get_source_info_list`
+        :return: success status
+        :rtype: a list containing 1=>success, 0=>failure
+        """
+        self._set_default_source = pa_context_success_cb_t(self._context_success_cb)
+        pa_context_set_default_source(self._context,
+                                      name,
+                                      self._set_default_source,
+                                      None)
+
+    @wait_callback('_context_success_cb')
+    def set_default_sink(self, name):
+        """
+        Set default sink by name.
+
+        :param name: name of sink
+            See also:: :meth:`get_sink_info_list`
+        :return: success status
+        :rtype: a list containing 1=>success, 0=>failure
+        """
+        self._set_default_source = pa_context_success_cb_t(self._context_success_cb)
+        pa_context_set_default_sink(self._context,
+                                    name,
+                                    self._set_default_source,
+                                    None)
 
     def _state_changed_cb(self, context, userdata):
         state = pa_context_get_state(context)
@@ -547,6 +599,18 @@ class PulseAudio(object):
         else:
             ret['argument'] = None
         return (ret, False)
+
+    @callback
+    def _server_info_cb(self, context, server_info, user_data):
+        ret = {}
+        ret['user_name'] = server_info.contents.user_name
+        ret['host_name'] = server_info.contents.host_name
+        ret['server_version'] = server_info.contents.server_version
+        ret['server_name'] = server_info.contents.server_name
+        ret['default_sink_name'] = server_info.contents.default_sink_name
+        ret['default_source_name'] = server_info.contents.default_source_name
+        ret['cookie'] = server_info.contents.cookie
+        return (ret, True)
 
     @callback
     def _context_index_cb(self, context, index, userdata):

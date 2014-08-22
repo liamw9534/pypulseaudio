@@ -52,11 +52,13 @@ v0.1.0
 
 Initial release supporting:
 
+- Get server information with ``get_server_info()``
 - Connection management with ``connect()`` and ``disconnect()``
 - Enumerate installed audio cards using ``get_card_info_list()``, ``get_card_info_by_name()`` and ``get_card_info_by_index()``
 - Enumerate available audio sources using ``get_source_info_list()``, ``get_source_info_by_name()`` and ``get_source_info_by_index()``
 - Enumerate available audio sinks using ``get_sink_info_list()``, ``get_sink_info_by_name()`` and ``get_sink_info_by_index()``
 - Enumerate installed modules using ``get_module_info_list()`` and ``get_module_info()``
+- Set default sources and sinks with ``set_default_source()`` and ``set_default_sink()``
 - Module management with ``load_module()`` and ``unload_module()``
 - Set a card's profile with ``set_card_profile_by_index()`` or ``set_card_profile_by_name()``
 
