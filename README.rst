@@ -24,7 +24,7 @@ A python library wrapper for interacting with the pulseaudio sound system.
 Installation
 ============
 
-Install the python library by running:
+Install the python library by running::
 
     pip install pypulseaudio
 
@@ -33,7 +33,6 @@ Documentation
 =============
 
 Documentation is hosted at https://pythonhosted.org/pypulseaudio
-
 
 
 Project resources

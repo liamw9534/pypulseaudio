@@ -1,6 +1,6 @@
 from __future__ import unicode_literals
 
-from ctypes import c_int, c_char_p, cast, POINTER
+from ctypes import *
 from pulseaudio.lib_pulseaudio import *
 
 __version__ = '0.1.0'
@@ -154,7 +154,7 @@ class PulseAudio(object):
         pa_context_disconnect(self._context)
 
     @wait_callback('_context_index_cb')
-    def load_module(self, module_name, module_args):
+    def load_module(self, module_name, module_args={}):
         """
         Load a pulseaudio module.
 
@@ -186,6 +186,7 @@ class PulseAudio(object):
         - index
         - profiles each containing profile name, description,
             n_sinks and n_sources
+        - active_profile
 
         :return: cards and an associated card profile list per card
         :rtype: list of dict items with one dict per card
@@ -400,6 +401,7 @@ class PulseAudio(object):
         fields are:
         - name
         - index
+        - n_used
         - module arguments (as dictionary key/value pairs)
 
         :return: module information
@@ -416,6 +418,7 @@ class PulseAudio(object):
         Obtain module info by module index.  Supported fields are:
         - name
         - index
+        - n_used
         - module arguments (as dictionary key/value pairs)
 
         :param index: module index
@@ -464,34 +467,42 @@ class PulseAudio(object):
                                  None)
 
     @wait_callback('_context_success_cb')
-    def set_card_profile_by_index(self, index):
+    def set_card_profile_by_index(self, index, profile):
         """
         Set card profile by profile index.
 
-        :param index: a valid card profile index.
+        :param index: card index
             See also:: :meth:`get_card_info_list`
+        :type index: integer
+        :param profile: card profile name
+        :type profile: string
         :return: success status
         :rtype: a list containing 1=>success, 0=>failure
         """
         self._set_card_profile_by_index = pa_context_success_cb_t(self._context_success_cb)
         pa_context_set_card_profile_by_index(self._context,
                                              index,
+                                             profile,
                                              self._set_card_profile_by_index,
                                              None)
 
     @wait_callback('_context_success_cb')
-    def set_card_profile_by_name(self, name):
+    def set_card_profile_by_name(self, name, profile):
         """
         Set card profile by profile index.
 
-        :param index: a valid card profile index.
+        :param name: card name
             See also:: :meth:`get_card_info_list`
+        :type name: string
+        :param profile: card profile name
+        :type profile: string
         :return: success status
         :rtype: a list containing 1=>success, 0=>failure
         """
         self._set_card_profile_by_name = pa_context_success_cb_t(self._context_success_cb)
         pa_context_set_card_profile_by_name(self._context,
                                             name,
+                                            profile,
                                             self._set_card_profile_by_name,
                                             None)
 
@@ -546,6 +557,12 @@ class PulseAudio(object):
                                     'n_sinks': profiles[i].n_sinks,
                                     'n_sources': profiles[i].n_sources
                                     })
+        active_profile = cast(card_info.contents.active_profile, POINTER(pa_card_profile_info))
+        if (hasattr(active_profile, 'contents') and
+            hasattr(active_profile.contents, 'name')):
+            ret['active_profile'] = active_profile.contents.name
+        else:
+            ret['active_profile'] = None
         return (ret, False)
 
     @callback
@@ -593,6 +610,7 @@ class PulseAudio(object):
         ret = {}
         ret['name'] = module_info.contents.name
         ret['index'] = module_info.contents.index
+        ret['n_used'] = module_info.contents.n_used
         if (module_info.contents.argument is not None):
             ret['argument'] = {i[0]:i[1] for i in
                           [i.split('=') for i in module_info.contents.argument.split()]}
@@ -614,8 +632,8 @@ class PulseAudio(object):
 
     @callback
     def _context_index_cb(self, context, index, userdata):
-        return (index, True)
+        return (c_int32(index).value, True)
 
     @callback
     def _context_success_cb(self, context, success, userdata):
-        return (success, True)
+        return (True if success else False, True)
