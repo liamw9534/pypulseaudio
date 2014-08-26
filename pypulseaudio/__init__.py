@@ -18,6 +18,8 @@ state_map = {
     PA_CONTEXT_UNCONNECTED: "unconnected",
 }
 
+PULSEAUDIO_TIMEOUT = 1000000  # Expressed in milliseconds
+
 
 def callback(cb):
     """
@@ -45,8 +47,6 @@ def wait_callback(cb):
     an argument, in order to access the correct location for
     retrieving the callback return value.  This complements
     the procedure carried out by :meth:`callback`.
-
-    TODO: Add timeout and state error handling support.
     """ 
     def cb_decorator(f):
         def cb_func(*args):
@@ -55,9 +55,12 @@ def wait_callback(cb):
                 self._cb_event[cb] = False
                 f(*args)
                 while (True):
-                    pa_mainloop_iterate(self._main_loop, c_int(1), None)
                     if (self._cb_event[cb]):
                         return self._cb_return.pop(cb)
+                    pa_mainloop_prepare(self._main_loop, PULSEAUDIO_TIMEOUT)
+                    pa_mainloop_poll(self._main_loop)
+                    if (pa_mainloop_dispatch(self._main_loop) <= 0):
+                        raise Exception('State Change Timed Out')
         return cb_func
     return cb_decorator
 
@@ -68,15 +71,16 @@ def wait_state_change(required_state):
     depends on a pulseaudio state change.  The required_state
     argument is substituted with the actual desired value when
     the decorator is used.
-    
-    TODO: Add timeout support.
     """
     def cb_decorator(f):
         def cb_func(*args):
             self = args[0]
             f(*args)
             while (self.state != required_state):
-                pa_mainloop_iterate(self._main_loop, c_int(1), None)
+                pa_mainloop_prepare(self._main_loop, PULSEAUDIO_TIMEOUT)
+                pa_mainloop_poll(self._main_loop)
+                if (pa_mainloop_dispatch(self._main_loop) <= 0):
+                    raise Exception('State Change Timed Out')
         return cb_func
     return cb_decorator
 
